@@ -158,15 +158,22 @@
     <Compile Include="Pathing\Worldmap\WorldmapNode.cs" />
     <Compile Include="Pathing\Worldmap\WorldmapPathfinder.cs" />
     <Compile Include="Profile.cs" />
+    <Compile Include="Profiles\Combat.cs" />
     <Compile Include="Profiles\Gatherer\Blacklisted.cs" />
     <Compile Include="Profiles\Gatherer\Gatherer.Bank.cs" />
     <Compile Include="Profiles\Gatherer\Gatherer.Combat.cs" />
     <Compile Include="Profiles\Gatherer\Gatherer.cs" />
     <Compile Include="Profiles\Gatherer\Gatherer.Harvest.cs" />
     <Compile Include="Profiles\Gatherer\Gatherer.Search.cs" />
+    <Compile Include="Profiles\Gatherer\Gatherer.UI.cs" />
+    <Compile Include="Profiles\Gatherer\GatherInformation.cs" />
     <Compile Include="Profiles\ClusterPathingRequest.cs" />
     <Compile Include="Profiles\Gatherer\State.cs" />
     <Compile Include="Profiles\Gatherer\Trigger.cs" />
+    <Compile Include="Profiles\Helper\ResourceType.cs" />
+    <Compile Include="Profiles\Helper\Tier.cs" />
+    <Compile Include="Profiles\Helper\TownClusterName.cs" />
+    <Compile Include="Profiles\Helper\EnchantmentLevel.cs" />
     <Compile Include="Profiles\WorldPathingRequest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
