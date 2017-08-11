@@ -2,94 +2,71 @@
 using System.Diagnostics;
 using System.Linq;
 using Merlin.API;
-using Stateless;
 using UnityEngine;
+using Player = LocalPlayerCharacterView;
 using SpellCategory = gz.SpellCategory;
 using SpellTarget = gz.SpellTarget;
 
 namespace Merlin.Profiles {
-	class Combat {
 
-		private readonly LocalPlayerCharacterView _player;
-		private readonly List<SpecialMob> _mobList;
+	public class Combat {
 
-		private StateMachine<State, Trigger> _state;
+		public static Combat Instance;
+		private static Player Player => Client.Instance.LocalPlayerCharacter;
+
+		static Combat() {
+			Instance = new Combat();
+		}
+
+		public delegate bool InterruptDelegate(FightingObjectView target);
+		public delegate bool DodgeDelegate(FightingObjectView target, out Evade evade);
+
+		private InterruptDelegate ShouldInterrupt;
+		private DodgeDelegate ShouldDodge;
+
+		private State state;
 
 		private float elapsedSeconds;
 		private float secondCount;
 
-		public Combat(LocalPlayerCharacterView player) {
-			_player = player;
-			_mobList = new List<SpecialMob>();
+		private bool evading;
 
-			_state = new StateMachine<State, Trigger>(State.Idle);
-			_state.Configure(State.Idle)
-				.Permit(Trigger.Died, State.Respawn)
-				.Permit(Trigger.Recover, State.Recover)
-				.Permit(Trigger.EncounteredAttacker, State.Combat);
+		public void SetState(State newState) => state = newState;
+		public bool IsState(State state) => this.state == state;
+		public State GetState() => state;
 
-			_state.Configure(State.Combat)
-				.Permit(Trigger.Finished, State.Idle)
-				// .Permit(Trigger.LowHealth, State.Flee) Not working for now.
-				.Permit(Trigger.Died, State.Respawn);
-
-			_state.Configure(State.Respawn)
-				.Permit(Trigger.Finished, State.Idle);
-
-			_state.Configure(State.Flee)
-				.Permit(Trigger.Died, State.Respawn)
-				.Permit(Trigger.Finished, State.Recover);
-
-			_state.Configure(State.Recover)
-				.Permit(Trigger.EncounteredAttacker, State.Combat)
-				.Permit(Trigger.Died, State.Respawn)
-				.Permit(Trigger.Finished, State.Idle);
-
+		private Combat() {
+			SetState(State.Idle);
+			ResetDelegates();
 		}
 
-		public void AddMob(string name) {
-			_mobList.Add(new SpecialMob(name));
+		public void Debug() {
+			var target = Player.GetAttackTarget();
+			var guiX = 1373;
+			var guiY = 182;
+			var guiW = 304;
+			var guiH = 206; // 9 label lines.
+			var boxGui = new Rect(guiX, guiY, guiW, guiH);
+			GUI.Box(boxGui, "");
+
+			var useSpells = GetUsableSpells();
+			var spellStr = "";
+			for (int i = useSpells.Length - 1; i >= 0; i--) {
+				if (string.IsNullOrEmpty(useSpells[i].Name)) continue;
+				spellStr += useSpells[i].Name + "\n\t";
+			}
+			var dbgStr = $"Target: {target.PrefabName}\nSpells: {spellStr}\n";
+			GUI.Label(new Rect(guiX + 4, guiY + 4, guiW - 8, guiH - 8), dbgStr);
 		}
-
-		private void AddSpellToMob(SpecialMob mob, DangerousSpell spell) => mob.AddSpell(spell);
-
-		private SpecialMob GetMobByName(string mobName) {
-			return _mobList.FirstOrDefault(m => m.GetName().Equals(mobName));
-		}
-
-		public void AddSpellToMob(string mobName, SpellCategory category, SpellTarget target, Evade evade, string spellName = null) {
-			DangerousSpell spell = new DangerousSpell(target, category, evade, spellName);
-			var mob = GetMobByName(mobName);
-			if (mob != null)
-				AddSpellToMob(mob, spell);
-		}
-
-		private bool IsSpecialMob(FightingObjectView target, out Evade evade) {
-			evade = Evade.Tank;
-			if (!target.IsCasting()) return false;
-
-			var targetName = target.name;
-			var spellName = target.GetSpellCasted().d6;
-			var spellTarget = target.GetSpellCasted().d1;
-			var spellCategory = target.GetSpellCasted().d4;
-
-			var mob = _mobList.Find(s => s.GetName().Equals(targetName));
-			var mobSpell = mob.GetSpell(spellName, spellCategory, spellTarget);
-			if (mobSpell == null) return false;
-			evade = mobSpell.GetEvadeMethod();
-			return true;
-		}
-
-		public State GetState() => _state.State;
 
 		public void Update() {
 			var curTime = Stopwatch.GetTimestamp() / Stopwatch.Frequency; // Gets seconds
-			elapsedSeconds = secondCount - curTime;
+			elapsedSeconds += curTime - secondCount;
 			secondCount = curTime;
 
 			// Update based on state
 			// Do nothing while idle.
-			switch (_state.State) {
+			switch (state) {
 				case State.Idle:
 					Idle();
 					break;
@@ -108,73 +85,73 @@ namespace Merlin.Profiles {
 			}
 		}
 
-		public bool HandleAttackers() {
-			if (_player.IsUnderAttack(out FightingObjectView attacker)) {
-				_player.CreateTextEffect("[Attacked]");
-				_state.Fire(Trigger.EncounteredAttacker);
-				return true;
-			}
-
-			return false;
-		}
-
 		private void Idle() {
-			if (_player.IsUnderAttack(out FightingObjectView attacker)) {
+			if (Player.IsUnderAttack(out FightingObjectView attacker)) {
 				Core.Log("[Combat] Attacked");
 				elapsedSeconds = 0;
-				_state.Fire(Trigger.EncounteredAttacker);
+				SetState(State.Combat);
 				return;
 			}
 
-			if (_player.GetHealth() <= 0) {
+			if (Player.GetHealth() <= 0) {
 				Core.Log("[Combat] Player died");
-				_state.Fire(Trigger.Died);
+				SetState(State.Respawn);
 				return;
 			}
 
-			if (_player.GetHealth() <= _player.GetMaxHealth() * 0.5f) {
+			if (Player.GetHealth() <= Player.GetMaxHealth() * 0.5f) {
 				Core.Log("[Combat] Recovering");
-				_state.Fire(Trigger.Recover);
+				SetState(State.Recover);
 				return;
 			}
 		}
 
 		private void Fight() {
-			var attackTimer = _player.GetAttackDelay().p();
-			var spells = _player.GetSpells().Ready()
-				.Ignore("ESCAPE_DUNGEON").Ignore("PLAYER_COUPDEGRACE")
-				.Ignore("AMBUSH").Ignore("OUTOFCOMBATHEAL");
-
-			var attackTarget = _player.GetAttackTarget();
-
-			Evade evade;
-			if (attackTarget != null && IsSpecialMob(attackTarget, out evade)) {
-				_player.CreateTextEffect("[Dodging]");
-				Dodge(attackTarget, evade);
+			var target = Player.GetAttackTarget();
+			if (ShouldDodge(target, out Evade evade)) {
+				Dodge(target, evade, ShouldInterrupt(target));
 				return;
 			}
 
-			if (attackTarget != null && elapsedSeconds > attackTimer / 1000f) {
-				var selfBuffSpells = spells.Target(SpellTarget.Self).Category(SpellCategory.Damage);
-				if (selfBuffSpells.Any() && !_player.IsCastingSpell()) {
-					_player.CreateTextEffect("[Casting Buff Spell]");
-					_player.CastOnSelf(selfBuffSpells.FirstOrDefault().SpellSlot);
+			if (!evading)
+				Attack(target);
+		}
+
+		private void Attack(FightingObjectView target) {
+			var attackTimer = Player.GetAttackDelay().p();
+			var spells = GetUsableSpells();
+			Player.CreateTextEffect("[Attacking]");
+
+			// enemy not null and player has finished autoAttacking
+			if (target != null && elapsedSeconds > (attackTimer / 1000f) * 2) {
+				var selfBuffSpells = spells.Target(SpellTarget.Self).Category(SpellCategory.Buff);
+				if (selfBuffSpells.Any() && !Player.IsCastingSpell()) {
+					Player.CreateTextEffect("[Casting Buff Spell]");
+					Player.CastOnSelf(selfBuffSpells.FirstOrDefault().SpellSlot);
+					elapsedSeconds = 0;
+					return;
+				}
+
+				var selfDamage = spells.Target(SpellTarget.Self).Category(SpellCategory.Damage);
+				if (selfDamage.Any() && !Player.IsCastingSpell()) {
+					Player.CreateTextEffect("[Casting Buff Spell]");
+					Player.CastOnSelf(selfDamage.FirstOrDefault().SpellSlot);
 					elapsedSeconds = 0;
 					return;
 				}
 
 				var enemyBuffSpells = spells.Target(SpellTarget.Enemy).Category(SpellCategory.Buff);
-				if (enemyBuffSpells.Any() && !_player.IsCastingSpell()) {
-					_player.CreateTextEffect("[Casting Damage Spell]");
-					_player.CastOn(enemyBuffSpells.FirstOrDefault().SpellSlot, attackTarget);
+				if (enemyBuffSpells.Any() && !Player.IsCastingSpell()) {
+					Player.CreateTextEffect("[Casting Damage Spell]");
+					Player.CastOn(enemyBuffSpells.FirstOrDefault().SpellSlot, target);
 					elapsedSeconds = 0;
 					return;
 				}
 
 				var enemyCCSpells = spells.Target(SpellTarget.Enemy).Category(SpellCategory.CrowdControl);
-				if (enemyCCSpells.Any() && !_player.IsCastingSpell()) {
-					_player.CreateTextEffect("[Casting CrowdControl Spell]");
-					_player.CastOn(enemyCCSpells.FirstOrDefault().SpellSlot, attackTarget);
+				if (enemyCCSpells.Any() && !Player.IsCastingSpell()) {
+					Player.CreateTextEffect("[Casting CrowdControl Spell]");
+					Player.CastOn(enemyCCSpells.FirstOrDefault().SpellSlot, target);
 					elapsedSeconds = 0;
 					return;
 				}
@@ -188,143 +165,162 @@ namespace Merlin.Profiles {
 				} */
 			}
 
-
-			if (_player.IsUnderAttack(out FightingObjectView attacker)) {
-				_player.SetSelectedObject(attacker);
-				_player.AttackSelectedObject();
+			if (Player.IsUnderAttack(out FightingObjectView attacker)) {
+				Player.SetSelectedObject(attacker);
+				Player.AttackSelectedObject();
 				return;
 			}
 
-			if (_player.GetHealth() <= (_player.GetMaxHealth() * 0.1f)) {
-				_state.Fire(Trigger.LowHealth);
+			if (Player.GetHealth() <= (Player.GetMaxHealth() * 0.1f)) {
+				SetState(State.Flee);
 				return;
 			}
 
-			if (_player.IsCasting())
+			if (Player.IsCasting())
 				return;
 
-			Core.Log("[Expedition] Continuing.");
-			_state.Fire(Trigger.Finished);
+			Core.Log("Continuing.");
+			SetState(State.Idle);
 		}
 
-		private void Dodge(FightingObjectView attackTarget, Evade evadeMethod) {
-			Vector3 movePosition;
-			switch (evadeMethod) {
+		private void Dodge(FightingObjectView target, Evade evade, bool shouldInterrupt = true) {
+			Player.CreateTextEffect("[Dodging]");
+			var spells = GetUsableSpells();
+			var defensive = spells.FirstOrDefault(s => s.Category.Equals(SpellCategory.Buff_Damageshield));
+			var interrupt = spells.FirstOrDefault(s => s.Category.Equals(SpellCategory.CrowdControl) && !s.Target.Equals(SpellTarget.Ground));
+
+			if (interrupt != null && shouldInterrupt) {
+				Cast(interrupt);
+				Core.Log("Evading by Interrupt");
+				return;
+			}
+			Vector3 movePos;
+			switch (evade) {
 				case Evade.Behind:
-					movePosition = (attackTarget.transform.position - attackTarget.transform.forward * 3);
-					_player.RequestMove(movePosition);
+					movePos = target.transform.position - target.transform.forward * 20f;
+					Player.RequestMove(movePos);
+					evading = true;
+					Core.Log("Evading behind");
 					break;
 				case Evade.Left:
-					movePosition = (attackTarget.transform.position - attackTarget.transform.right * 3);
-					_player.RequestMove(movePosition);
+					movePos = target.transform.position - target.transform.right * 20f;
+					Player.RequestMove(movePos);
+					evading = true;
+					Core.Log("Evading left");
+					break;
+				case Evade.Away:
+					movePos = target.transform.position - target.transform.forward * 20f;
+					Player.RequestMove(movePos);
+					evading = true;
+					Core.Log("Evading away");
 					break;
 				case Evade.Defensive:
-					// Not implemented yet.
-					break;
-				case Evade.Tank:
-				default:
+					Cast(defensive);
+					Core.Log("Evading by defensive");
 					break;
 			}
 		}
 
 		private void Recover() {
-			var recoverySpell = _player.GetSpells().Slot(SpellSlotIndex.Armor).FirstOrDefault();
+			var recoverySpell = Player.GetSpells().Slot(SpellSlotIndex.Armor).FirstOrDefault();
 
-			if (_player.IsUnderAttack(out FightingObjectView attacker)) {
+			if (Player.IsUnderAttack(out FightingObjectView attacker)) {
 				Core.Log("Attacked");
-				_state.Fire(Trigger.EncounteredAttacker);
+				SetState(State.Combat);
 				return;
 			}
 
-			if (recoverySpell != null && recoverySpell.Name.Equals("OUTOFCOMBATHEAL") && recoverySpell.IsReady) {
-				_player.CastOnSelf(SpellSlotIndex.Armor);
+			if (recoverySpell != null && !Player.IsGettingUpFromKnockDown() &&
+			    recoverySpell.Name.Equals("OUTOFCOMBATHEAL") && recoverySpell.IsReady) {
+				Player.CastOnSelf(SpellSlotIndex.Armor);
 			}
 
-			if (_player.GetHealth() <= 0)
-				_state.Fire(Trigger.Died);
+			if (Player.GetHealth() <= 0)
+				SetState(State.Respawn);
 
-			if (_player.GetHealth() > _player.GetMaxHealth() * 0.75f)
-				_state.Fire(Trigger.Finished);
+			if (Player.GetHealth() > Player.GetMaxHealth() * 0.75f) {
+				SetState(State.Idle);
+			}
 		}
 
-		private void Flee() {
-			if (_player.GetHealth() <= 0) {
-				_state.Fire(Trigger.Died);
-				return;
-			}
+		/**
+		 * Flee is a virtual, but protected, method so it *can* be overridden.
+		 * This can be used to implement your own methods in separate classes.
+		 */
+		protected virtual void Flee() {
+			if (Player.GetHealth() <= 0)
+				SetState(State.Respawn);
+			if (Player.GetHealth() == Player.GetMaxHealth())
+				SetState(State.Idle);
 
-			/* Not Yet Implemented
-			if (_player.IsInCombat())
-				path.Flee();
-			else
-				_state.Fire(Trigger.Finished);
-				*/
 		}
 
 		private void Respawn() {
 			var isRespawnShowing = GameGui.Instance.RespawnGui.ExpeditionStart.isActiveAndEnabled;
-			if (isRespawnShowing)
-				_player.OnRespawn();
+			if (isRespawnShowing) {
+				Player.OnRespawn();
+				SetState(State.Idle);
+			}
 		}
 
-		private class DangerousSpell {
-			private readonly string name;
-			private readonly Evade evadeMethod;
-			private readonly SpellTarget target;
-			private readonly SpellCategory category;
-
-			// Name should be the FightingObjectView.GetSpellCasted().d6
-			public DangerousSpell(SpellTarget target, SpellCategory category, Evade evadeMethod, string spellName) {
-				this.name = spellName;
-				this.target = target;
-				this.category = category;
-				this.evadeMethod = evadeMethod;
+		private Spell[] GetUsableSpells() {
+			List<Spell> returnSpells = new List<Spell>();
+			var spells = Player.GetSpells();
+			for (int i = spells.Length - 1; i > 0; i--) {
+				if (!spells[i].IsReady) continue;
+				if (spells[i].Target == SpellTarget.Ground) continue; // Not quite working.
+				if (spells[i].SpellSlot == SpellSlotIndex.Potion || spells[i].SpellSlot == SpellSlotIndex.Food)
+					continue;
+				returnSpells.Add(spells[i]);
 			}
 
-			public Evade GetEvadeMethod() => evadeMethod;
-			public bool IsNamed() => !string.IsNullOrEmpty(name);
-			public string GetName() => name;
-			public SpellTarget GetTarget() => target;
-			public SpellCategory GetCategory() => category;
+			return returnSpells.ToArray();
 		}
 
-		private class SpecialMob {
-
-			private readonly string name;
-			public string GetName() => name;
-
-			private List<DangerousSpell> dangerousSpells;
-
-			public SpecialMob(string name, params DangerousSpell[] dSpells) {
-				this.name = name;
-				this.dangerousSpells = new List<DangerousSpell>();
-
-				foreach (var spell in dSpells)
-					dangerousSpells.Add(spell);
+		private void Cast(Spell spell, FightingObjectView target = null) {
+			switch (spell.Target) {
+				case SpellTarget.Self:
+					Player.CastOnSelf(spell.SpellSlot);
+					return;
+				case SpellTarget.Ground:
+					Player.CastAt(spell.SpellSlot, target == null ? Player.GetPosition() : target.GetPosition());
+					return;
+				case SpellTarget.Enemy:
+					if (target != null)
+						Player.CastOn(spell.SpellSlot, target);
+					return;
 			}
+		}
 
-			public List<DangerousSpell> GetDangerousSpells() => dangerousSpells;
+		public void ResetDelegates() {
+			ResetInterruptDelegate();
+			ResetDodgeDelegate();
+		}
 
-			public DangerousSpell GetSpell(string spellName, SpellCategory category, SpellTarget target) {
-				foreach (var spell in dangerousSpells) {
-					if (!spell.IsNamed()) continue;
-					if (spell.GetCategory().Equals(category) && spell.GetTarget().Equals(target) && spell.GetName().Equals(spellName))
-						return spell;
-				}
+		public void SetInterruptDelegate(InterruptDelegate shouldInterrupt) => ShouldInterrupt = shouldInterrupt;
+		public void SetDodgeDelegate(DodgeDelegate dodgeDelegate) => ShouldDodge = dodgeDelegate;
+		public void ResetInterruptDelegate() => ShouldInterrupt = DefaultShouldInterrupt;
+		public void ResetDodgeDelegate() => ShouldDodge = DefaultShouldDodge;
 
-				return null;
-			}
-			public DangerousSpell GetSpell(SpellCategory category, SpellTarget target) {
-				foreach (var spell in dangerousSpells) {
-					if (spell.IsNamed()) continue;
-					if (spell.GetCategory().Equals(category) && spell.GetTarget().Equals(target))
-						return spell;
-				}
+		private bool DefaultShouldDodge(FightingObjectView target, out Evade evade) {
+			evade = Evade.Tank;
+			if (target.IsCasting()) return false;
 
-				return null;
-			}
+			var spellCategory = target.GetSpellCasted().d4;
+			var spellTarget = target.GetSpellCasted().d1;
 
-			internal void AddSpell(DangerousSpell spell) => dangerousSpells.Add(spell);
+			if (spellCategory != SpellCategory.Damage) return true;
+
+			if (spellTarget == SpellTarget.Enemy)
+				evade = Evade.Defensive;
+			if (spellTarget == SpellTarget.Ground)
+				evade = Evade.Left;
+
+			return true;
+		}
+
+		private bool DefaultShouldInterrupt(FightingObjectView target) {
+			return true;
 		}
 
 		public enum State {
@@ -340,15 +336,8 @@ namespace Merlin.Profiles {
 			Behind,
 			Left,
 			Defensive,
-			Tank
-		}
-
-		public enum Trigger {
-			EncounteredAttacker,
-			LowHealth,
-			Recover,
-			Died,
-			Finished,
+			Tank,
+			Away
 		}
 
 		public static string GetStateString(State state) {
