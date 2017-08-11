@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using SpellCategory = gz.SpellCategory;
+using SpellTarget = gz.SpellTarget;
 
 using UnityEngine;
 
@@ -50,7 +52,7 @@ namespace Merlin.API
 			}
 		}
 
-		public gz.SpellCategory Category
+		public SpellCategory Category
 		{
 			get
 			{
@@ -59,11 +61,11 @@ namespace Merlin.API
 				if (configuration != null)
 					return configuration.Category;
 
-				return gz.SpellCategory.None;
+				return SpellCategory.None;
 			}
 		}
 
-		public gz.SpellTarget Target
+		public SpellTarget Target
 		{
 			get
 			{
@@ -72,7 +74,7 @@ namespace Merlin.API
 				if (configuration != null)
 					return configuration.Target;
 
-				return gz.SpellTarget.None;
+				return SpellTarget.None;
 			}
 		}
 
@@ -134,25 +136,25 @@ namespace Merlin.API
 			}
 		}
 
-		public gz.SpellCategory Category
+		public SpellCategory Category
 		{
 			get
 			{
 				if (_internalConfiguration != null)
 					return _internalConfiguration.d4;
 
-				return gz.SpellCategory.None;
+				return SpellCategory.None;
 			}
 		}
 
-		public gz.SpellTarget Target
+		public SpellTarget Target
 		{
 			get
 			{
 				if (_internalConfiguration != null)
 					return _internalConfiguration.d1;
 
-				return gz.SpellTarget.None;
+				return SpellTarget.None;
 			}
 		}
 
@@ -190,12 +192,12 @@ namespace Merlin.API
 			return spells.Where<Spell>(spell => spell.SpellSlot == spellSlot);
 		}
 
-		public static IEnumerable<Spell> Category(this IEnumerable<Spell> spells, gz.SpellCategory category)
+		public static IEnumerable<Spell> Category(this IEnumerable<Spell> spells, SpellCategory category)
 		{
 			return spells.Where<Spell>(spell => spell.Category == category);
 		}
 
-		public static IEnumerable<Spell> Target(this IEnumerable<Spell> spells, gz.SpellTarget target)
+		public static IEnumerable<Spell> Target(this IEnumerable<Spell> spells, SpellTarget target)
 		{
 			return spells.Where<Spell>(spell => spell.Target == target);
 		}
