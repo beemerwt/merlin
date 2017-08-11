@@ -159,6 +159,17 @@
     <Compile Include="Pathing\Worldmap\WorldmapPathfinder.cs" />
     <Compile Include="Profile.cs" />
     <Compile Include="Profiles\Combat.cs" />
+    <Compile Include="Profiles\Expedition\Expedition.Combat.cs" />
+    <Compile Include="Profiles\Expedition\Expedition.cs" />
+    <Compile Include="Profiles\Expedition\Expedition.Navigation.cs" />
+    <Compile Include="Profiles\Expedition\Expedition.Restart.cs" />
+    <Compile Include="Profiles\Expedition\ExpeditionPathingRequest.cs" />
+    <Compile Include="Profiles\Expedition\Mob.cs" />
+    <Compile Include="Profiles\Expedition\Mobs\HereticArcherMob.cs" />
+    <Compile Include="Profiles\Expedition\Mobs\HereticMageMob.cs" />
+    <Compile Include="Profiles\Expedition\Mobs\HereticMinibossMob.cs" />
+    <Compile Include="Profiles\Expedition\Mobs\HereticTankMob.cs" />
+    <Compile Include="Profiles\Expedition\Mobs\OverseerMob.cs" />
     <Compile Include="Profiles\Gatherer\Blacklisted.cs" />
     <Compile Include="Profiles\Gatherer\Gatherer.Bank.cs" />
     <Compile Include="Profiles\Gatherer\Gatherer.Combat.cs" />
