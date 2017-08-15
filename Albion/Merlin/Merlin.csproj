@@ -133,6 +133,13 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>SimulationObjectView.tt</DependentUpon>
     </Compile>
+    <Compile Include="Merlingue\AlbionStyle.cs" />
+    <Compile Include="Merlingue\Button.cs" />
+    <Compile Include="Merlingue\Debug.cs" />
+    <Compile Include="Merlingue\GuiElement.cs" />
+    <Compile Include="Merlingue\IClickable.cs" />
+    <Compile Include="Merlingue\Dropdown.cs" />
+    <Compile Include="Merlingue\SelectionDropdown.cs" />
     <Compile Include="Pathing\AStar\AStarMap.cs" />
     <Compile Include="Pathing\AStar\AStarNode.cs" />
     <Compile Include="Pathing\AStar\AStarPathfinder.cs" />
